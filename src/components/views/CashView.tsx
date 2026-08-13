@@ -12,6 +12,7 @@ export default function CashView({ type = 'cash', targetName = 'مارکێت' }:
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [relatedEntityId, setRelatedEntityId] = useState('');
+  const [suggestions, setSuggestions] = useState<any[]>([]);
 
   useEffect(() => {
     const q = query(collection(db, 'transactions'), where('type', '==', type));
@@ -66,10 +67,14 @@ export default function CashView({ type = 'cash', targetName = 'مارکێت' }:
             <input
               type="text"
               required
+              list={`suggestions-cash-${type}`}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
               value={relatedEntityId}
               onChange={(e) => setRelatedEntityId(e.target.value)}
             />
+            <datalist id={`suggestions-cash-${type}`}>
+              {suggestions.map(s => <option key={s.id} value={s.name} />)}
+            </datalist>
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm text-slate-600 mb-1">وردەکاری (بۆ نموونە: بڕی کاڵاکان)</label>
