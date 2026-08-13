@@ -19,6 +19,7 @@ export default function InventoryView({ role }: { role: Role }) {
   const [cartonQuantity, setCartonQuantity] = useState('');
   const [ratio, setRatio] = useState('');
   const [supplier, setSupplier] = useState('');
+  const [companies, setCompanies] = useState<any[]>([]);
   const [filterSupplier, setFilterSupplier] = useState('');
   const [sortDate, setSortDate] = useState<'desc' | 'asc'>('desc');
   const [paymentType, setPaymentType] = useState<'cash' | 'debt'>('cash');
@@ -238,10 +239,14 @@ export default function InventoryView({ role }: { role: Role }) {
             <label className="block text-sm text-gray-600 mb-1">کۆمپانیا / شوێن</label>
             <input
               type="text"
+              list="companies-list"
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={supplier}
               onChange={(e) => setSupplier(e.target.value)}
             />
+            <datalist id="companies-list">
+              {companies.map(c => <option key={c.id} value={c.name} />)}
+            </datalist>
           </div>
           <div className="lg:col-span-3 flex flex-col gap-3 mt-2">
           <div className="flex gap-4 items-center mb-1">
