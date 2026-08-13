@@ -12,6 +12,7 @@ export default function DebtsView({ type = 'debt', targetName = 'مارکێت' }
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [relatedEntityId, setRelatedEntityId] = useState('');
+  const [suggestions, setSuggestions] = useState<any[]>([]);
 
   useEffect(() => {
     const q = query(collection(db, 'transactions'), where('type', '==', type));
@@ -23,8 +24,20 @@ export default function DebtsView({ type = 'debt', targetName = 'مارکێت' }
       setDebts(debtsData.sort((a, b) => b.date - a.date));
       setLoading(false);
     });
-    return () => unsubscribe();
-  }, []);
+
+    const collectionName = type.includes('company') ? 'companies' : 'markets';
+    const qSuggestions = query(collection(db, collectionName));
+    const unsubSuggestions = onSnapshot(qSuggestions, (snapshot) => {
+      const data: any[] = [];
+      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
+      setSuggestions(data);
+    });
+
+    return () => {
+      unsubscribe();
+      unsubSuggestions();
+    };
+  }, [type]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,10 +87,14 @@ export default function DebtsView({ type = 'debt', targetName = 'مارکێت' }
             <input
               type="text"
               required
+              list={`suggestions-${type}`}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
               value={relatedEntityId}
               onChange={(e) => setRelatedEntityId(e.target.value)}
             />
+            <datalist id={`suggestions-${type}`}>
+              {suggestions.map(s => <option key={s.id} value={s.name} />)}
+            </datalist>
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm text-slate-600 mb-1">وردەکاری (بۆ نموونە: بڕی کاڵاکان)</label>
