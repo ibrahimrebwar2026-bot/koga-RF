@@ -67,6 +67,7 @@ export default function Dashboard({ role, onLogout }: DashboardProps) {
       const adminMenu = [
     { id: 'inventory', label: 'داخڵکردن و کۆگا', icon: Package },
     { id: 'stock_history', label: 'مێژووی هاتنی کاڵا', icon: History },
+    { id: 'returns', label: 'گەڕاوەی کاڵا', icon: Undo2 },
     { id: 'orders', label: 'تەسفییەکردن', icon: ShoppingCart },
     { id: 'admin_cashvan', label: 'حیساباتی کاشڤان', icon: Truck },
     { id: 'companies_group', label: 'کۆمپانیا و حیسابات', icon: Building2 },
@@ -78,6 +79,7 @@ export default function Dashboard({ role, onLogout }: DashboardProps) {
     const warehouseMenu = [
     { id: 'inventory', label: 'داخڵکردن و کۆگا', icon: Package },
     { id: 'stock_history', label: 'مێژووی هاتنی کاڵا', icon: History },
+    { id: 'returns', label: 'گەڕاوەی کاڵا', icon: Undo2 },
     { id: 'orders', label: 'ئۆردەرەکان', icon: ShoppingCart },
     { id: 'warehouse_cashvan', label: 'پێدان بە کاشڤان', icon: Truck },
   ];
