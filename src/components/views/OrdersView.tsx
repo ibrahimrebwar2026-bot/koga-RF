@@ -9,6 +9,7 @@ export default function OrdersView({ role }: { role: Role }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [markets, setMarkets] = useState<Market[]>([]);
+  const [reps, setReps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // New Order State
@@ -53,10 +54,18 @@ export default function OrdersView({ role }: { role: Role }) {
       setLoading(false);
     });
 
+    const qReps = query(collection(db, 'reps'));
+    const unsubReps = onSnapshot(qReps, (snapshot) => {
+      const repsData: any[] = [];
+      snapshot.forEach(doc => repsData.push({ id: doc.id, ...doc.data() }));
+      setReps(repsData);
+    });
+
     return () => {
       unsubOrders();
       unsubItems();
       unsubMarkets();
+      unsubReps();
     };
   }, []);
 
