@@ -1,0 +1,241 @@
+import React, { useState, useEffect } from 'react';
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { Item, CashvanTransfer } from '../../types';
+import { Plus, Search, Check, Send } from 'lucide-react';
+import { format } from 'date-fns';
+
+export default function WarehouseCashvanView() {
+  const [items, setItems] = useState<Item[]>([]);
+  const [cashvans, setCashvans] = useState<any[]>([]);
+  const [transfers, setTransfers] = useState<CashvanTransfer[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [selectedCashvan, setSelectedCashvan] = useState('');
+  const [cart, setCart] = useState<{item: Item, quantity: number}[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const unsubItems = onSnapshot(query(collection(db, 'items')), (snapshot) => {
+      const data: Item[] = [];
+      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() } as Item));
+      setItems(data);
+    });
+
+    const unsubCashvans = onSnapshot(query(collection(db, 'cashvans')), (snapshot) => {
+      const data: any[] = [];
+      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
+      setCashvans(data);
+    });
+
+    const unsubTransfers = onSnapshot(query(collection(db, 'cashvan_transfers')), (snapshot) => {
+      const data: CashvanTransfer[] = [];
+      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() } as CashvanTransfer));
+      setTransfers(data.sort((a, b) => b.date - a.date));
+      setLoading(false);
+    });
+
+    return () => {
+      unsubItems();
+      unsubCashvans();
+      unsubTransfers();
+    };
+  }, []);
+
+  const addToCart = (item: Item) => {
+    setCart(prev => {
+      const existing = prev.find(p => p.item.id === item.id);
+      if (existing) {
+        if (existing.quantity >= item.quantity) return prev;
+        return prev.map(p => p.item.id === item.id ? { ...p, quantity: p.quantity + 1 } : p);
+      }
+      if (item.quantity <= 0) return prev;
+      return [...prev, { item, quantity: 1 }];
+    });
+  };
+
+  const updateQuantity = (itemId: string, qty: number) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+    if (qty > item.quantity) qty = item.quantity;
+    if (qty < 1) {
+      setCart(prev => prev.filter(p => p.item.id !== itemId));
+      return;
+    }
+    setCart(prev => prev.map(p => p.item.id === itemId ? { ...p, quantity: qty } : p));
+  };
+
+  const handleTransfer = async () => {
+    if (!selectedCashvan || cart.length === 0) return;
+    
+    try {
+      const totalValue = cart.reduce((acc, curr) => acc + (curr.item.costPrice * curr.quantity), 0);
+      
+      const transferData: Omit<CashvanTransfer, 'id'> = {
+        cashvanName: selectedCashvan,
+        items: cart.map(c => ({
+          itemId: c.item.id,
+          name: c.item.name,
+          quantity: c.quantity,
+          price: c.item.costPrice
+        })),
+        totalValue,
+        date: Date.now()
+      };
+
+      await addDoc(collection(db, 'cashvan_transfers'), transferData);
+
+      // Deduct from global items and add to cashvan_inventory
+      for (const cartItem of cart) {
+        // Deduct global
+        const itemRef = doc(db, 'items', cartItem.item.id);
+        const newQty = cartItem.item.quantity - cartItem.quantity;
+        await updateDoc(itemRef, { quantity: newQty });
+
+        // Add to cashvan inventory
+        const cInvRef = doc(db, 'cashvan_inventory', `${selectedCashvan}_${cartItem.item.id}`);
+        const cInvSnap = await getDoc(cInvRef);
+        if (cInvSnap.exists()) {
+          const currentQty = cInvSnap.data().quantity || 0;
+          await updateDoc(cInvRef, { quantity: currentQty + cartItem.quantity });
+        } else {
+          await setDoc(cInvRef, {
+            cashvanName: selectedCashvan,
+            itemId: cartItem.item.id,
+            name: cartItem.item.name,
+            quantity: cartItem.quantity,
+            price: cartItem.item.costPrice,
+            sellingPrice: cartItem.item.sellingPrice,
+            barcode: cartItem.item.barcode,
+            ratio: cartItem.item.ratio || 1
+          });
+        }
+      }
+
+      setCart([]);
+      alert('بەسەرکەوتوویی درا بە کاشڤان');
+    } catch (error) {
+      console.error(error);
+      alert('هەڵەیەک ڕوویدا');
+    }
+  };
+
+  const filteredItems = items.filter(item => 
+    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.barcode.includes(searchTerm)
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <h2 className="text-xl font-bold text-slate-800 mb-4">پێدانی کاڵا بە کاشڤان</h2>
+          
+          <div className="mb-4">
+            <label className="block text-sm text-slate-600 mb-1">ناوی کاشڤان هەڵبژێرە</label>
+            <select
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none"
+              value={selectedCashvan}
+              onChange={(e) => setSelectedCashvan(e.target.value)}
+            >
+              <option value="">-- هەڵبژێرە --</option>
+              {cashvans.map(c => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mb-4 relative">
+            <Search className="absolute right-3 top-2.5 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="گەڕان بۆ کاڵا..."
+              className="w-full pl-3 pr-10 py-2 border border-slate-200 rounded-lg outline-none"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="max-h-60 overflow-y-auto space-y-2 border border-slate-100 rounded-lg p-2">
+            {filteredItems.map(item => (
+              <div key={item.id} className="flex justify-between items-center p-2 hover:bg-slate-50 rounded border-b border-slate-50">
+                <div>
+                  <div className="font-bold text-sm">{item.name}</div>
+                  <div className="text-xs text-slate-500">بەردەست: {item.quantity}</div>
+                </div>
+                <button
+                  onClick={() => addToCart(item)}
+                  disabled={item.quantity <= 0}
+                  className="p-1.5 bg-indigo-100 text-indigo-600 rounded hover:bg-indigo-200 disabled:opacity-50"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col">
+          <h2 className="text-xl font-bold text-slate-800 mb-4">لیستی پێدان</h2>
+          <div className="flex-1 overflow-y-auto space-y-2 min-h-[200px]">
+            {cart.map(c => (
+              <div key={c.item.id} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg">
+                <div className="font-bold text-sm">{c.item.name}</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max={c.item.quantity}
+                    value={c.quantity}
+                    onChange={(e) => updateQuantity(c.item.id, parseInt(e.target.value) || 0)}
+                    className="w-16 px-2 py-1 text-center border border-slate-200 rounded outline-none"
+                  />
+                </div>
+              </div>
+            ))}
+            {cart.length === 0 && (
+              <div className="text-center text-slate-400 py-10 text-sm">هیچ کاڵایەک هەڵنەبژێردراوە</div>
+            )}
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <button
+              onClick={handleTransfer}
+              disabled={cart.length === 0 || !selectedCashvan}
+              className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold flex justify-center items-center gap-2 hover:bg-indigo-700 disabled:opacity-50 transition"
+            >
+              <Send size={20} />
+              پێدان بە کاشڤان
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <h2 className="text-xl font-bold text-slate-800 mb-4">مێژووی پێدانەکان</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-right">
+            <thead className="bg-slate-50 text-slate-500 text-xs">
+              <tr>
+                <th className="p-3">کاشڤان</th>
+                <th className="p-3">بەروار</th>
+                <th className="p-3">بڕی کاڵاکان</th>
+                <th className="p-3">کۆی تێچوو</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {transfers.map(t => (
+                <tr key={t.id}>
+                  <td className="p-3 font-bold">{t.cashvanName}</td>
+                  <td className="p-3 text-slate-600">{format(t.date, 'yyyy/MM/dd HH:mm')}</td>
+                  <td className="p-3">{t.items.reduce((a, b) => a + b.quantity, 0)} دانە</td>
+                  <td className="p-3 font-bold text-indigo-600" dir="ltr">{t.totalValue.toLocaleString()} د.ع</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
