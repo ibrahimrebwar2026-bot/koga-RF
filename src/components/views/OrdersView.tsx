@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, where, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, where, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Order, Item, Role, Market } from '../../types';
 import { ShoppingCart, Plus, Printer, CheckCircle, Search, X, DollarSign, CreditCard, Trash2 } from 'lucide-react';
@@ -78,11 +78,23 @@ export default function OrdersView({ role }: { role: Role }) {
     }
   };
 
+  const getPriceByUnit = (item: Item, unit: string) => {
+    if (unit === 'carton') return item.cartonSellingPrice || (item.sellingPrice * (item.ratio || 1));
+    if (unit === 'packet') return item.packetSellingPrice || (item.sellingPrice * (item.packetRatio || 1));
+    return item.sellingPrice || 0;
+  };
+
+  const getPiecesByUnit = (item: Item, unit: string, qty: number) => {
+    if (unit === 'carton') return qty * (item.ratio || 1);
+    if (unit === 'packet') return qty * (item.packetRatio || 1);
+    return qty;
+  };
+
   const handleAddItemToOrder = (item: Item) => {
     const exists = selectedItems.find(si => si.item.id === item.id);
     if (exists) {
       const newQty = exists.quantity + 1;
-      const totalPieces = exists.unit === 'carton' ? newQty * (exists.item.ratio || 1) : newQty;
+      const totalPieces = getPiecesByUnit(exists.item, exists.unit || 'piece', newQty);
       if (totalPieces > exists.item.quantity) {
         alert('بڕی داواکراو لە کۆگا بەردەست نییە');
         return;
@@ -99,7 +111,7 @@ export default function OrdersView({ role }: { role: Role }) {
     }
   };
 
-  const handleUpdateItemQuantity = (id: string, qty: number, unit?: 'piece'|'carton') => {
+  const handleUpdateItemQuantity = (id: string, qty: number, unit?: string) => {
     if (qty <= 0) {
       setSelectedItems(selectedItems.filter(si => si.item.id !== id));
       return;
@@ -107,17 +119,24 @@ export default function OrdersView({ role }: { role: Role }) {
     
     const item = selectedItems.find(si => si.item.id === id);
     if (item) {
-      const selectedUnit = unit || item.unit;
-      const totalPieces = selectedUnit === 'carton' ? qty * (item.item.ratio || 1) : qty;
+      const selectedUnit = unit || item.unit || 'piece';
+      const totalPieces = getPiecesByUnit(item.item, selectedUnit, qty);
       if (totalPieces > item.item.quantity) {
-        alert('بڕی داواکراو لە کۆگا بەردەست نییە. تەنها ' + item.item.quantity + ' دانە ماوە.');
+        alert(`بڕی داواکراو لە کۆگا بەردەست نییە. تەنها ${item.item.quantity} دانە ماوە.`);
         return;
       }
     }
 
     setSelectedItems(selectedItems.map(si => 
-      si.item.id === id ? { ...si, quantity: qty, unit: unit || si.unit } : si
+      si.item.id === id ? { ...si, quantity: qty, unit: (unit || si.unit) as any } : si
     ));
+  };
+
+  const handleQuantityDelta = (id: string, delta: number) => {
+    const item = selectedItems.find(si => si.item.id === id);
+    if (item) {
+      handleUpdateItemQuantity(id, item.quantity + delta, item.unit);
+    }
   };
 
   const submitOrder = async (e: React.FormEvent) => {
@@ -128,23 +147,39 @@ export default function OrdersView({ role }: { role: Role }) {
     }
 
     const totalAmount = selectedItems.reduce((acc, curr) => {
-      const price = curr.unit === 'carton' ? curr.item.sellingPrice * (curr.item.ratio || 1) : curr.item.sellingPrice;
+      const price = curr.unit === 'carton' ? (curr.item.cartonSellingPrice || (curr.item.sellingPrice * (curr.item.ratio || 1))) : (curr.unit === 'packet' ? (curr.item.packetSellingPrice || (curr.item.sellingPrice * (curr.item.packetRatio || 1))) : curr.item.sellingPrice);
       return acc + (price * curr.quantity);
     }, 0);
+
+    const totalCost = selectedItems.reduce((acc, curr) => {
+      const cost = curr.unit === 'carton' ? (curr.item.cartonCostPrice || (curr.item.costPrice * (curr.item.ratio || 1))) : (curr.unit === 'packet' ? (curr.item.packetCostPrice || (curr.item.costPrice * (curr.item.packetRatio || 1))) : curr.item.costPrice);
+      return acc + (cost * curr.quantity);
+    }, 0);
+
+    const totalProfit = totalAmount - totalCost;
+
     const orderItems = selectedItems.map(si => ({
       itemId: si.item.id,
       name: si.item.name,
-      price: si.unit === 'carton' ? si.item.sellingPrice * (si.item.ratio || 1) : si.item.sellingPrice,
+      price: si.unit === 'carton' ? (si.item.cartonSellingPrice || (si.item.sellingPrice * (si.item.ratio || 1))) : (si.unit === 'packet' ? (si.item.packetSellingPrice || (si.item.sellingPrice * (si.item.packetRatio || 1))) : si.item.sellingPrice),
       quantity: si.quantity,
       unit: si.unit
     }));
 
     try {
+      if (repName && !reps.find(r => r.name === repName)) {
+        await addDoc(collection(db, 'reps'), { name: repName, phone: '', totalSales: 0, totalProfit: 0, createdAt: Date.now() });
+      }
+      if (marketName && !markets.find(m => m.name === marketName)) {
+        await addDoc(collection(db, 'markets'), { name: marketName, phone: '', location: location || '', createdAt: Date.now() });
+      }
+
       await addDoc(collection(db, 'orders'), {
         repName,
         marketName,
         location,
         totalAmount,
+        totalProfit,
         items: orderItems,
         status: 'pending',
         timestamp: Date.now()
@@ -169,7 +204,11 @@ export default function OrdersView({ role }: { role: Role }) {
           const itemRef = doc(db, 'items', item.itemId);
           const itemSnap = await getDoc(itemRef);
           if (itemSnap.exists()) {
-            const newQty = (itemSnap.data().quantity || 0) - item.quantity;
+            const data = itemSnap.data();
+            const ratio = data.ratio || 1;
+            const packetRatio = data.packetRatio || 1;
+            const totalPieces = item.unit === 'carton' ? item.quantity * ratio : (item.unit === 'packet' ? item.quantity * packetRatio : item.quantity);
+            const newQty = (data.quantity || 0) - totalPieces;
             await updateDoc(itemRef, { quantity: newQty });
           }
         }
@@ -196,6 +235,17 @@ export default function OrdersView({ role }: { role: Role }) {
         status: 'completed',
         paymentStatus: type
       });
+      
+      // 3. Update Rep stats
+      const repSnap = await getDocs(query(collection(db, 'reps'), where('name', '==', settlingOrder.repName)));
+      if (!repSnap.empty) {
+        const repDoc = repSnap.docs[0];
+        await updateDoc(doc(db, 'reps', repDoc.id), {
+          totalSales: (repDoc.data().totalSales || 0) + settlingOrder.totalAmount,
+          totalProfit: (repDoc.data().totalProfit || 0) + (settlingOrder.totalProfit || 0)
+        });
+      }
+
       setSettlingOrder(null);
     } catch (error) {
       console.error(error);
@@ -235,12 +285,16 @@ export default function OrdersView({ role }: { role: Role }) {
 
     const printContent = `
       <div dir="rtl" style="font-family: sans-serif; padding: 20px;">
-        <div style="text-align: center; margin-bottom: 20px;">
-          <img src="${window.location.origin}/LOGO1.jpg" alt="Logo" style="width: 80px; height: 80px; object-fit: contain; margin-bottom: 10px;" />
-          <h1 style="margin: 0; color: #1e293b; font-size: 24px;">کۆمپانیای RF</h1>
-          <h2 style="margin: 5px 0; color: #333; font-size: 18px;">بۆ بازرگانی گشتی</h2>
-          <p style="margin: 5px 0; font-size: 14px;">ناونیشان: هەولێر-ڕێگای کەرکوک</p>
-          <p style="margin: 5px 0; font-size: 14px;">ژمارە مۆبایل: 07506144894</p>
+        <div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
+          <div style="text-align: right; width: 250px;">
+            <img src="${window.location.origin}/LOGO1.jpg" alt="Logo" style="width: 80px; height: 80px; object-fit: contain; margin-bottom: 5px;" onerror="this.style.display='none'" />
+            <h2 style="margin: 0; color: #333; font-size: 16px;">وەسڵی کۆگا</h2>
+            <p style="margin: 2px 0; font-size: 12px;">ناونیشان: هەولێر-ڕێگای کەرکوک</p>
+            <p style="margin: 2px 0; font-size: 12px;">مۆبایل: 07506144894</p>
+          </div>
+          <div style="text-align: center; flex: 1; padding-top: 20px;">
+            <h1 style="margin: 0; color: #1e293b; font-size: 52px; font-weight: 900; letter-spacing: 2px; white-space: nowrap;">TAM TAM</h1>
+          </div>
         </div>
         
         <hr style="border: 0; border-top: 2px solid #1e293b; margin: 15px 0;" />
@@ -279,15 +333,18 @@ export default function OrdersView({ role }: { role: Role }) {
               const globalItem = items.find(i => i.id === item.itemId);
               const barcode = globalItem?.barcode || '-';
               const ratio = globalItem?.ratio || 1;
-              const cartonQty = (item.quantity / ratio).toFixed(2);
-              const cartonPrice = (item.price * ratio).toLocaleString();
-              const unitLabel = item.unit === 'carton' ? 'کارتۆن' : 'دانە';
+              const packetRatio = globalItem?.packetRatio || 1;
+              const totalPieces = item.unit === 'carton' ? item.quantity * ratio : (item.unit === 'packet' ? item.quantity * packetRatio : item.quantity);
+              const cartonQty = (totalPieces / ratio).toFixed(2);
+              const piecePrice = item.unit === 'carton' ? item.price / ratio : (item.unit === 'packet' ? item.price / packetRatio : item.price);
+              const cartonPrice = (piecePrice * ratio).toLocaleString();
+              const unitLabel = item.unit === 'carton' ? 'کار' : (item.unit === 'packet' ? 'پاک' : 'دان');
               return `
                 <tr>
                   <td style="padding: 8px; border: 1px solid #ccc;">${index + 1}</td>
                   <td style="padding: 8px; border: 1px solid #ccc; font-family: monospace;">${barcode}</td>
                   <td style="padding: 8px; border: 1px solid #ccc; text-align: right;">${item.name}</td>
-                  <td style="padding: 8px; border: 1px solid #ccc;">${item.quantity} ${unitLabel}</td>
+                  <td style="padding: 8px; border: 1px solid #ccc;">${item.quantity}/${unitLabel}</td>
                   <td style="padding: 8px; border: 1px solid #ccc;">${cartonQty}</td>
                   <td style="padding: 8px; border: 1px solid #ccc;">${item.price.toLocaleString()}</td>
                   <td style="padding: 8px; border: 1px solid #ccc;">${cartonPrice}</td>
@@ -429,20 +486,23 @@ export default function OrdersView({ role }: { role: Role }) {
                     selectedItems.map((si) => (
                       <div key={si.item.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-white rounded-xl border border-slate-200 shadow-sm gap-2">
                         <div className="font-semibold text-slate-800 text-sm flex-1">{si.item.name}</div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-slate-500 font-mono" dir="ltr">{si.item.sellingPrice}</span>
-                          <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-2 py-1">
-                            <input 
-                              type="number" 
-                              min="1"
-                              className="w-12 outline-none text-center text-sm font-medium"
-                              value={si.quantity}
-                              onChange={(e) => handleUpdateItemQuantity(si.item.id, Number(e.target.value))}
-                              dir="ltr"
-                            />
+                        <div className="flex items-center gap-3 flex-wrap justify-end">
+                          <select 
+                            className="px-2 py-1 border border-slate-200 rounded-lg outline-none text-sm bg-slate-50"
+                            value={si.unit || 'piece'}
+                            onChange={(e) => handleUpdateItemQuantity(si.item.id, si.quantity, e.target.value)}
+                          >
+                            <option value="piece">دانە</option>
+                            {si.item.packetRatio > 0 && <option value="packet">پاکەت</option>}
+                            {si.item.ratio > 0 && <option value="carton">کارتۆن</option>}
+                          </select>
+                          <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-2 py-1 bg-white">
+                            <button type="button" onClick={() => handleQuantityDelta(si.item.id, -1)} className="px-2 text-xl font-bold text-slate-500 hover:text-indigo-600 focus:outline-none">-</button>
+                            <span className="w-8 text-center text-sm font-medium">{si.quantity}</span>
+                            <button type="button" onClick={() => handleQuantityDelta(si.item.id, 1)} className="px-2 text-xl font-bold text-slate-500 hover:text-indigo-600 focus:outline-none">+</button>
                           </div>
                           <span className="font-bold min-w-[80px] text-left text-slate-800 text-sm" dir="ltr">
-                            {(si.quantity * si.item.sellingPrice).toLocaleString()}
+                            {(si.quantity * getPriceByUnit(si.item, si.unit || 'piece')).toLocaleString()}
                           </span>
                         </div>
                       </div>
@@ -452,7 +512,7 @@ export default function OrdersView({ role }: { role: Role }) {
                 <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
                   <div className="font-bold text-slate-800 text-sm">کۆی گشتی:</div>
                   <div className="font-bold text-xl text-indigo-600" dir="ltr">
-                    {selectedItems.reduce((acc, curr) => acc + (curr.quantity * (curr.unit === 'carton' ? curr.item.sellingPrice * (curr.item.ratio || 1) : curr.item.sellingPrice)), 0).toLocaleString()}
+                    {selectedItems.reduce((acc, curr) => acc + (curr.quantity * getPriceByUnit(curr.item, curr.unit || 'piece')), 0).toLocaleString()}
                   </div>
                 </div>
               </div>
