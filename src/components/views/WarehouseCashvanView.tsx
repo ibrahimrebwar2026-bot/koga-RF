@@ -25,7 +25,19 @@ export default function WarehouseCashvanView() {
     const unsubCashvans = onSnapshot(query(collection(db, 'cashvans')), (snapshot) => {
       const data: any[] = [];
       snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-      setCashvans(data);
+      setCashvans(prev => {
+        const reps = prev.filter(p => p.isRep);
+        return [...reps, ...data];
+      });
+    });
+
+    const unsubReps = onSnapshot(query(collection(db, 'reps')), (snapshot) => {
+      const data: any[] = [];
+      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data(), isRep: true }));
+      setCashvans(prev => {
+        const cvs = prev.filter(p => !p.isRep);
+        return [...cvs, ...data];
+      });
     });
 
     const unsubTransfers = onSnapshot(query(collection(db, 'cashvan_transfers')), (snapshot) => {
@@ -38,6 +50,7 @@ export default function WarehouseCashvanView() {
     return () => {
       unsubItems();
       unsubCashvans();
+      unsubReps();
       unsubTransfers();
     };
   }, []);
@@ -54,31 +67,59 @@ export default function WarehouseCashvanView() {
     });
   };
 
-  const updateQuantity = (itemId: string, qty: number) => {
+  const updateQuantity = (itemId: string, qty: number, unit?: string) => {
     const item = items.find(i => i.id === itemId);
     if (!item) return;
-    if (qty > item.quantity) qty = item.quantity;
-    if (qty < 1) {
-      setCart(prev => prev.filter(p => p.item.id !== itemId));
-      return;
+    
+    setCart(prev => {
+      const cartItem = prev.find(p => p.item.id === itemId);
+      if (!cartItem) return prev;
+      
+      const newUnit = unit || (cartItem as any).unit || 'piece';
+      const totalPieces = newUnit === 'carton' ? qty * (item.ratio || 1) : (newUnit === 'packet' ? qty * (item.packetRatio || 1) : qty);
+      
+      if (totalPieces > item.quantity) {
+        alert('بڕی داواکراو لە کۆگا بەردەست نییە');
+        return prev;
+      }
+      
+      if (qty < 1) {
+        return prev.filter(p => p.item.id !== itemId);
+      }
+      
+      return prev.map(p => p.item.id === itemId ? { ...p, quantity: qty, unit: newUnit } : p);
+    });
+  };
+
+  const handleQuantityDelta = (id: string, delta: number) => {
+    const cartItem = cart.find(c => c.item.id === id);
+    if (cartItem) {
+      updateQuantity(id, cartItem.quantity + delta, (cartItem as any).unit);
     }
-    setCart(prev => prev.map(p => p.item.id === itemId ? { ...p, quantity: qty } : p));
   };
 
   const handleTransfer = async () => {
     if (!selectedCashvan || cart.length === 0) return;
     
     try {
+      if (selectedCashvan && !cashvans.find(c => c.name === selectedCashvan)) {
+        await addDoc(collection(db, 'cashvans'), { name: selectedCashvan, phone: '', totalSales: 0, totalProfit: 0, createdAt: Date.now() });
+      }
+
       const totalValue = cart.reduce((acc, curr) => acc + (curr.item.costPrice * curr.quantity), 0);
       
       const transferData: Omit<CashvanTransfer, 'id'> = {
         cashvanName: selectedCashvan,
-        items: cart.map(c => ({
-          itemId: c.item.id,
-          name: c.item.name,
-          quantity: c.quantity,
-          price: c.item.costPrice
-        })),
+        items: cart.map(c => {
+          const unit = (c as any).unit || 'piece';
+          const totalPieces = unit === 'carton' ? c.quantity * (c.item.ratio || 1) : (unit === 'packet' ? c.quantity * (c.item.packetRatio || 1) : c.quantity);
+          return {
+            itemId: c.item.id,
+            name: c.item.name,
+            quantity: totalPieces,
+            price: c.item.costPrice
+          };
+        }),
         totalValue,
         date: Date.now()
       };
@@ -87,9 +128,12 @@ export default function WarehouseCashvanView() {
 
       // Deduct from global items and add to cashvan_inventory
       for (const cartItem of cart) {
+        const unit = (cartItem as any).unit || 'piece';
+        const totalPieces = unit === 'carton' ? cartItem.quantity * (cartItem.item.ratio || 1) : (unit === 'packet' ? cartItem.quantity * (cartItem.item.packetRatio || 1) : cartItem.quantity);
+        
         // Deduct global
         const itemRef = doc(db, 'items', cartItem.item.id);
-        const newQty = cartItem.item.quantity - cartItem.quantity;
+        const newQty = cartItem.item.quantity - totalPieces;
         await updateDoc(itemRef, { quantity: newQty });
 
         // Add to cashvan inventory
@@ -97,17 +141,25 @@ export default function WarehouseCashvanView() {
         const cInvSnap = await getDoc(cInvRef);
         if (cInvSnap.exists()) {
           const currentQty = cInvSnap.data().quantity || 0;
-          await updateDoc(cInvRef, { quantity: currentQty + cartItem.quantity });
+          await updateDoc(cInvRef, { quantity: currentQty + totalPieces });
         } else {
           await setDoc(cInvRef, {
             cashvanName: selectedCashvan,
             itemId: cartItem.item.id,
             name: cartItem.item.name,
-            quantity: cartItem.quantity,
-            price: cartItem.item.costPrice,
-            sellingPrice: cartItem.item.sellingPrice,
+            quantity: totalPieces,
             barcode: cartItem.item.barcode,
-            ratio: cartItem.item.ratio || 1
+            
+            costPrice: cartItem.item.costPrice,
+            sellingPrice: cartItem.item.sellingPrice,
+            
+            packetRatio: cartItem.item.packetRatio || 0,
+            packetCostPrice: cartItem.item.packetCostPrice || 0,
+            packetSellingPrice: cartItem.item.packetSellingPrice || 0,
+            
+            ratio: cartItem.item.ratio || 1,
+            cartonCostPrice: cartItem.item.cartonCostPrice || 0,
+            cartonSellingPrice: cartItem.item.cartonSellingPrice || 0
           });
         }
       }
@@ -133,16 +185,19 @@ export default function WarehouseCashvanView() {
           
           <div className="mb-4">
             <label className="block text-sm text-slate-600 mb-1">ناوی کاشڤان هەڵبژێرە</label>
-            <select
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none"
+            <input
+              type="text"
+              list="cashvan-list"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
               value={selectedCashvan}
               onChange={(e) => setSelectedCashvan(e.target.value)}
-            >
-              <option value="">-- هەڵبژێرە --</option>
+              placeholder="ناوی کاشڤان بنووسە..."
+            />
+            <datalist id="cashvan-list">
               {cashvans.map(c => (
-                <option key={c.id} value={c.name}>{c.name}</option>
+                <option key={c.id} value={c.name} />
               ))}
-            </select>
+            </datalist>
           </div>
 
           <div className="mb-4 relative">
@@ -182,14 +237,20 @@ export default function WarehouseCashvanView() {
               <div key={c.item.id} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg">
                 <div className="font-bold text-sm">{c.item.name}</div>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max={c.item.quantity}
-                    value={c.quantity}
-                    onChange={(e) => updateQuantity(c.item.id, parseInt(e.target.value) || 0)}
-                    className="w-16 px-2 py-1 text-center border border-slate-200 rounded outline-none"
-                  />
+                  <select 
+                    className="px-2 py-1 border border-slate-200 rounded outline-none text-xs bg-slate-50"
+                    value={(c as any).unit || 'piece'}
+                    onChange={(e) => updateQuantity(c.item.id, c.quantity, e.target.value)}
+                  >
+                    <option value="piece">دانە</option>
+                    {c.item.packetRatio > 0 && <option value="packet">پاکەت</option>}
+                    {c.item.ratio > 0 && <option value="carton">کارتۆن</option>}
+                  </select>
+                  <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-1 py-1 bg-white">
+                    <button type="button" onClick={() => handleQuantityDelta(c.item.id, -1)} className="px-2 text-lg font-bold text-slate-500 hover:text-indigo-600">-</button>
+                    <span className="w-8 text-center text-sm">{c.quantity}</span>
+                    <button type="button" onClick={() => handleQuantityDelta(c.item.id, 1)} className="px-2 text-lg font-bold text-slate-500 hover:text-indigo-600">+</button>
+                  </div>
                 </div>
               </div>
             ))}
