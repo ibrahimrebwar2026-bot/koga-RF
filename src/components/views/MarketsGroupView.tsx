@@ -3,9 +3,10 @@ import MarketsView from './MarketsView';
 import DebtsView from './DebtsView';
 import CashView from './CashView';
 import PaidDebtsView from './PaidDebtsView';
+import AdminScheduleView from './AdminScheduleView';
 
 export default function MarketsGroupView() {
-  const [activeSubTab, setActiveSubTab] = useState<'markets' | 'debts' | 'cash' | 'paid'>('markets');
+  const [activeSubTab, setActiveSubTab] = useState<'markets' | 'debts' | 'cash' | 'paid' | 'schedule'>('markets');
 
   return (
     <div className="space-y-4">
@@ -34,6 +35,12 @@ export default function MarketsGroupView() {
         >
           قەرزە دراوەکان
         </button>
+        <button
+          onClick={() => setActiveSubTab('schedule')}
+          className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition ${activeSubTab === 'schedule' ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-slate-50'}`}
+        >
+          خشتەی سەردان
+        </button>
       </div>
 
       <div className="mt-4">
@@ -41,6 +48,7 @@ export default function MarketsGroupView() {
         {activeSubTab === 'debts' && <DebtsView />}
         {activeSubTab === 'cash' && <CashView />}
         {activeSubTab === 'paid' && <PaidDebtsView type="paid_debt" />}
+        {activeSubTab === 'schedule' && <AdminScheduleView />}
       </div>
     </div>
   );
