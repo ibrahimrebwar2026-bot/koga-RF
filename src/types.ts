@@ -9,12 +9,20 @@ export interface Item {
   id: string;
   name: string;
   barcode: string;
-  costPrice: number;
-  sellingPrice: number;
   quantity: number;
-  ratio: number;
   supplier?: string;
   createdAt?: number;
+  
+  costPrice: number;
+  sellingPrice: number;
+  
+  packetRatio?: number;
+  packetCostPrice?: number;
+  packetSellingPrice?: number;
+
+  ratio: number; // carton ratio
+  cartonCostPrice?: number;
+  cartonSellingPrice?: number;
 }
 
 export interface Market {
@@ -54,7 +62,7 @@ export interface OrderItem {
   itemId: string;
   name: string;
   quantity: number;
-  unit?: 'piece' | 'carton';
+  unit?: 'piece' | 'packet' | 'carton';
   price: number;
 }
 
@@ -64,6 +72,7 @@ export interface Order {
   marketName: string;
   location: string;
   totalAmount: number;
+  totalProfit?: number;
   items: OrderItem[];
   status: 'pending' | 'printed' | 'completed';
   paymentStatus?: 'cash' | 'debt';
@@ -86,7 +95,7 @@ export interface CashvanTransfer {
     itemId: string;
     name: string;
     quantity: number;
-    unit?: 'piece' | 'carton';
+    unit?: 'piece' | 'packet' | 'carton';
     price: number;
   }[];
   totalValue: number;
@@ -101,10 +110,11 @@ export interface CashvanSale {
     itemId: string;
     name: string;
     quantity: number;
-    unit?: 'piece' | 'carton';
+    unit?: 'piece' | 'packet' | 'carton';
     price: number;
   }[];
   totalAmount: number;
+  totalProfit?: number;
   status: 'pending_accounting' | 'accounted';
   date: number;
 }
