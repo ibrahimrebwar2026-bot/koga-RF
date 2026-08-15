@@ -13,9 +13,12 @@ export default function LedgerView() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
 
+  const [ordersProfit, setOrdersProfit] = useState(0);
+  const [cashvanProfit, setCashvanProfit] = useState(0);
+
   useEffect(() => {
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubTrans = onSnapshot(q, (snapshot) => {
       const transData: Transaction[] = [];
       snapshot.forEach((doc) => {
         transData.push({ id: doc.id, ...doc.data() } as Transaction);
@@ -23,7 +26,34 @@ export default function LedgerView() {
       setTransactions(transData);
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    const unsubOrders = onSnapshot(collection(db, 'orders'), (snapshot) => {
+      let profit = 0;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.status === 'completed' && data.totalProfit) {
+          profit += data.totalProfit;
+        }
+      });
+      setOrdersProfit(profit);
+    });
+
+    const unsubCashvan = onSnapshot(collection(db, 'cashvan_sales'), (snapshot) => {
+      let profit = 0;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.status === 'accounted' && data.totalProfit) {
+          profit += data.totalProfit;
+        }
+      });
+      setCashvanProfit(profit);
+    });
+
+    return () => {
+      unsubTrans();
+      unsubOrders();
+      unsubCashvan();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,19 +90,30 @@ export default function LedgerView() {
 
   const totalIncome = calculateTotal(['income', 'cash', 'paid_debt']);
   const totalExpense = calculateTotal(['expense', 'company_cash', 'company_paid_debt']);
+  const manualExpenses = calculateTotal(['expense']);
   const netProfit = totalIncome - totalExpense;
+  const realProfit = ordersProfit + cashvanProfit - manualExpenses;
 
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
           <div className="p-4 bg-indigo-100 text-indigo-600 rounded-full shrink-0">
+            <TrendingUp size={24} />
+          </div>
+          <div>
+            <div className="text-sm text-slate-500 mb-1">قازانجی سافی (فرۆشتن)</div>
+            <div className="text-2xl font-bold text-indigo-600" dir="ltr">{realProfit.toLocaleString()}</div>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+          <div className="p-4 bg-emerald-100 text-emerald-600 rounded-full shrink-0">
             <DollarSign size={24} />
           </div>
           <div>
-            <div className="text-sm text-slate-500 mb-1">قازانجی سافی</div>
-            <div className="text-2xl font-bold text-indigo-600" dir="ltr">{netProfit.toLocaleString()}</div>
+            <div className="text-sm text-slate-500 mb-1">باڵانسی نەقد</div>
+            <div className="text-2xl font-bold text-emerald-600" dir="ltr">{netProfit.toLocaleString()}</div>
           </div>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
