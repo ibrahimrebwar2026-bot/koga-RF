@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, updateDoc, doc, addDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, updateDoc, doc, addDoc, getDocs, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { CashvanSale, CashvanTransfer, Transaction } from '../../types';
 import { Truck, CheckCircle2, DollarSign, History } from 'lucide-react';
@@ -45,6 +45,16 @@ export default function AdminCashvanView() {
         status: 'accounted'
       });
       
+      // Update cashvan stats
+      const cvSnap = await getDocs(query(collection(db, 'cashvans'), where('name', '==', sale.cashvanName)));
+      if (!cvSnap.empty) {
+        const cvDoc = cvSnap.docs[0];
+        await updateDoc(doc(db, 'cashvans', cvDoc.id), {
+          totalSales: (cvDoc.data().totalSales || 0) + sale.totalAmount,
+          totalProfit: (cvDoc.data().totalProfit || 0) + (sale.totalProfit || 0)
+        });
+      }
+
     } catch (error) {
       console.error(error);
       alert('هەڵەیەک ڕوویدا لە کاتی ناردن بۆ حیسابات');
@@ -57,7 +67,7 @@ export default function AdminCashvanView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-2 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
+      <div className="flex flex-col sm:flex-row gap-2 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
         <button
           onClick={() => setActiveTab('sales')}
           className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition ${activeTab === 'sales' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
