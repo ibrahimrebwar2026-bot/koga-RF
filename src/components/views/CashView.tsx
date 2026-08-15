@@ -32,6 +32,11 @@ export default function CashView({ type = 'cash', targetName = 'مارکێت' }:
     if (!amount || !description) return;
 
     try {
+      if (relatedEntityId && !suggestions.find(s => s.name === relatedEntityId)) {
+        const collectionName = type.includes('company') ? 'companies' : 'markets';
+        await addDoc(collection(db, collectionName), { name: relatedEntityId, location: '', phone: '', createdAt: Date.now() });
+      }
+
       await addDoc(collection(db, 'transactions'), {
         type,
         amount: Number(amount),
