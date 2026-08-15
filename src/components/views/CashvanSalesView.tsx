@@ -53,7 +53,7 @@ export default function CashvanSalesView() {
       const existing = prev.find(p => p.id === item.id);
       if (existing) {
         const newQty = existing.cartQty + 1;
-        const totalPieces = existing.unit === 'carton' ? newQty * (item.ratio || 1) : newQty;
+        const totalPieces = existing.unit === 'carton' ? newQty * (item.ratio || 1) : (existing.unit === 'packet' ? newQty * (item.packetRatio || 1) : newQty);
         if (totalPieces > item.quantity) {
           alert('بڕی داواکراو بەردەست نییە');
           return prev;
@@ -68,7 +68,7 @@ export default function CashvanSalesView() {
     });
   };
 
-  const updateCartQty = (id: string, qty: number, unit?: 'piece'|'carton') => {
+  const updateCartQty = (id: string, qty: number, unit?: 'piece'|'packet'|'carton') => {
     const item = inventory.find(i => i.id === id);
     if (!item) return;
     
@@ -77,7 +77,7 @@ export default function CashvanSalesView() {
       if (!cartItem) return prev;
       
       const newUnit = unit || cartItem.unit || 'piece';
-      const totalPieces = newUnit === 'carton' ? qty * (item.ratio || 1) : qty;
+      const totalPieces = newUnit === 'carton' ? qty * (item.ratio || 1) : (newUnit === 'packet' ? qty * (item.packetRatio || 1) : qty);
       
       if (totalPieces > item.quantity) {
         alert('بڕی داواکراو بەردەست نییە');
@@ -88,7 +88,9 @@ export default function CashvanSalesView() {
         return prev.filter(p => p.id !== id);
       }
       
-      const price = newUnit === 'carton' ? item.sellingPrice * (item.ratio || 1) : item.sellingPrice;
+      const price = newUnit === 'carton' ? (item.cartonSellingPrice || item.sellingPrice * (item.ratio || 1)) : 
+                    (newUnit === 'packet' ? (item.packetSellingPrice || item.sellingPrice * (item.packetRatio || 1)) : 
+                    item.sellingPrice);
       
       return prev.map(p => p.id === id ? { ...p, cartQty: qty, unit: newUnit, finalPrice: price } : p);
     });
@@ -102,7 +104,13 @@ export default function CashvanSalesView() {
     if (!selectedMarket || cart.length === 0) return;
 
     try {
+      if (selectedMarket && !markets.find(m => m.name === selectedMarket)) {
+        await addDoc(collection(db, 'markets'), { name: selectedMarket, location: '', phone: '', createdAt: Date.now() });
+      }
+      
       const totalAmount = cart.reduce((acc, curr) => acc + (curr.finalPrice * curr.cartQty), 0);
+      const totalCost = cart.reduce((acc, curr) => { const cost = curr.unit === "carton" ? (curr.cartonCostPrice || (curr.costPrice * (curr.ratio || 1))) : (curr.unit === "packet" ? (curr.packetCostPrice || (curr.costPrice * (curr.packetRatio || 1))) : curr.costPrice); return acc + (cost * curr.cartQty); }, 0);
+      const totalProfit = totalAmount - totalCost;
       
       const saleData: Omit<CashvanSale, 'id'> = {
         cashvanName: userName,
@@ -112,10 +120,12 @@ export default function CashvanSalesView() {
           name: c.name,
           quantity: c.cartQty,
           price: c.finalPrice,
+          unit: c.unit,
           ratio: c.ratio || 1,
           barcode: c.barcode || '-'
         })),
         totalAmount,
+        totalProfit,
         date: Date.now(),
         status: 'pending_accounting'
       };
@@ -133,7 +143,7 @@ export default function CashvanSalesView() {
         }
       }
 
-      printReceipt(saleData, docRef.id, printWin);
+      printReceipt(saleData, docRef.id);
       setCart([]);
       setSelectedMarket('');
     } catch (error) {
@@ -178,12 +188,19 @@ export default function CashvanSalesView() {
           </style>
         </head>
         <body>
-          <div class="center">
-            <img src="${window.location.origin}/LOGO1.jpg" alt="Logo" style="width: 60px; height: 60px; object-fit: contain; margin-bottom: 5px;" />
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+            <div style="text-align: right; width: 100px;">
+              <img src="${window.location.origin}/LOGO1.jpg" alt="Logo" style="width: 50px; height: 50px; object-fit: contain; margin-bottom: 5px;" onerror="this.style.display='none'" />
+              <div class="bold" style="font-size:12px;">کۆمپانیای RF</div>
+              <div style="font-size:10px;">07506144894</div>
+            </div>
+            <div style="text-align: center; flex: 1; padding-top: 10px;">
+              <h1 style="margin: 0; color: #1e293b; font-size: 28px; font-weight: 900; white-space: nowrap;">TAM TAM</h1>
+            </div>
           </div>
-          <div class="center bold" style="font-size:16px;">کۆمپانیای RF</div>
+          <hr style="border:0; border-top:1px dashed #ccc; margin:5px 0;" />
           <div class="center">کاشڤان: ${sale.cashvanName}</div>
-          <div style="margin-top:10px;">فاتیرەی ژمارە: ${invoiceId.slice(-6).toUpperCase()}</div>
+          <div style="margin-top:5px;">فاتیرەی ژمارە: ${invoiceId.slice(-6).toUpperCase()}</div>
           <div>کڕیار: ${sale.marketName}</div>
           <div>بەروار: ${format(sale.date, 'yyyy/MM/dd HH:mm')}</div>
           
@@ -197,14 +214,17 @@ export default function CashvanSalesView() {
               </tr>
             </thead>
             <tbody>
-              ${sale.items.map((item: any) => `
+              ${sale.items.map((item: any) => {
+                const unitLabel = item.unit === 'carton' ? 'کار' : (item.unit === 'packet' ? 'پاک' : 'دان');
+                return `
                 <tr>
                   <td>${item.name}</td>
-                  <td class="center">${item.quantity}</td>
+                  <td class="center">${item.quantity}/${unitLabel}</td>
                   <td class="center">${item.price}</td>
                   <td style="text-align:left">${item.quantity * item.price}</td>
                 </tr>
-              `).join('')}
+                `;
+              }).join('')}
             </tbody>
           </table>
           
@@ -280,19 +300,22 @@ export default function CashvanSalesView() {
           
           <div className="mb-4">
             <label className="block text-sm text-slate-600 mb-1">کڕیار / مارکێت هەڵبژێرە</label>
-            <select
+            <input
+              type="text"
+              list="markets-list"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition"
               value={selectedMarket}
               onChange={(e) => setSelectedMarket(e.target.value)}
-            >
-              <option value="">-- مارکێت هەڵبژێرە --</option>
+              placeholder="ناوی مارکێت بنووسە..."
+            />
+            <datalist id="markets-list">
               {markets.map(m => (
-                <option key={m.id} value={m.name}>{m.name} - {m.location}</option>
+                <option key={m.id} value={m.name} />
               ))}
-            </select>
+            </datalist>
           </div>
 
-          <div className="flex-1 overflow-y-auto mb-4 pr-2 border border-slate-200 rounded-lg">
+          <div className="flex-1 overflow-y-auto overflow-x-auto mb-4 pr-2 border border-slate-200 rounded-lg">
             {cart.length === 0 ? (
               <div className="h-full flex flex-col justify-center items-center text-slate-400 space-y-2 py-10">
                 <Search size={40} className="text-slate-200" />
@@ -317,8 +340,10 @@ export default function CashvanSalesView() {
                   {cart.map((c, index) => {
                     const barcode = c.barcode || '-';
                     const ratio = c.ratio || 1;
-                    const cartonQty = (c.cartQty / ratio).toFixed(2);
-                    const cartonPrice = (c.finalPrice * ratio).toLocaleString();
+                    const totalPieces = c.unit === 'carton' ? c.cartQty * ratio : (c.unit === 'packet' ? c.cartQty * (c.packetRatio || 1) : c.cartQty);
+                    const cartonQty = (totalPieces / ratio).toFixed(2);
+                    const piecePrice = c.unit === 'carton' ? c.finalPrice / ratio : (c.unit === 'packet' ? c.finalPrice / (c.packetRatio || 1) : c.finalPrice);
+                    const cartonPrice = (piecePrice * ratio).toLocaleString();
                     const total = (c.finalPrice * c.cartQty).toLocaleString();
                     return (
                       <tr key={c.id} className="hover:bg-slate-50">
@@ -326,15 +351,29 @@ export default function CashvanSalesView() {
                         <td className="p-2 font-mono text-xs" dir="ltr">{barcode}</td>
                         <td className="p-2 font-medium text-slate-800">{c.name}</td>
                         <td className="p-2 text-center">
-                          <input 
-                            type="number" 
-                            min="1"
-                            max={c.quantity}
-                            className="w-16 outline-none text-center border border-slate-200 rounded p-1"
-                            value={c.cartQty}
-                            onChange={(e) => updateCartQty(c.id, parseInt(e.target.value) || 0)}
-                            dir="ltr"
-                          />
+                          <div className="flex flex-col items-center gap-1">
+                            <select
+                              className="px-2 py-1 border border-slate-200 rounded outline-none text-xs bg-slate-50 w-full"
+                              value={c.unit || 'piece'}
+                              onChange={(e) => updateCartQty(c.id, c.cartQty, e.target.value as any)}
+                            >
+                              <option value="piece">دانە</option>
+                              {c.packetRatio > 0 && <option value="packet">پاکەت</option>}
+                              {c.ratio > 0 && <option value="carton">کارتۆن</option>}
+                            </select>
+                            <div className="flex items-center gap-1 border border-slate-200 rounded px-1 bg-white">
+                              <button type="button" onClick={() => updateCartQty(c.id, c.cartQty - 1, c.unit)} className="px-1 text-lg font-bold text-slate-500 hover:text-indigo-600 focus:outline-none">-</button>
+                              <input 
+                                type="number" 
+                                min="1"
+                                className="w-12 outline-none text-center p-1"
+                                value={c.cartQty}
+                                onChange={(e) => updateCartQty(c.id, parseInt(e.target.value) || 0, c.unit)}
+                                dir="ltr"
+                              />
+                              <button type="button" onClick={() => updateCartQty(c.id, c.cartQty + 1, c.unit)} className="px-1 text-lg font-bold text-slate-500 hover:text-indigo-600 focus:outline-none">+</button>
+                            </div>
+                          </div>
                         </td>
                         <td className="p-2 text-center">{cartonQty}</td>
                         <td className="p-2 text-center">
