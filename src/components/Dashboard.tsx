@@ -69,7 +69,7 @@ export default function Dashboard({ role, onLogout }: DashboardProps) {
     { id: 'stock_history', label: 'مێژووی هاتنی کاڵا', icon: History },
     { id: 'returns', label: 'گەڕاوەی کاڵا', icon: Undo2 },
     { id: 'orders', label: 'تەسفییەی پێشەکی مەندووب', icon: ShoppingCart },
-    { id: 'admin_cashvan', label: 'تەسفییەی نەقدی مەندووب', icon: Truck },
+    { id: 'admin_cashvan', label: 'کاشڤان', icon: Truck },
     { id: 'companies_group', label: 'کۆمپانیا و حیسابات', icon: Building2 },
     { id: 'markets_group', label: 'مارکێت و حیسابات', icon: Store },
     { id: 'ledger', label: 'دەفتەری حیسابات', icon: Calculator },
