@@ -178,7 +178,7 @@ export default function WarehouseCashvanView() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') handleTransfer(); }}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <h2 className="text-xl font-bold text-slate-800 mb-4">پێدانی کاڵا بە کاشڤان</h2>
