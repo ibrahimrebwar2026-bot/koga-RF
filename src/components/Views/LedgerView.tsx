@@ -89,10 +89,11 @@ export default function LedgerView() {
   };
 
   const totalIncome = calculateTotal(['income', 'cash', 'paid_debt']);
-  const totalExpense = calculateTotal(['expense', 'company_cash', 'company_paid_debt']);
+  const totalExpense = calculateTotal(['expense', 'company_cash', 'company_paid_debt', 'return_expense']);
   const manualExpenses = calculateTotal(['expense']);
-  const netProfit = totalIncome - totalExpense;
-  const realProfit = ordersProfit + cashvanProfit - manualExpenses;
+  const returnProfitsLost = transactions.filter(t => t.type === 'return_expense').reduce((acc, t) => acc + (t.profitReversal || 0), 0);
+  const netProfit = totalIncome - totalExpense; // Cash Flow
+  const realProfit = ordersProfit + cashvanProfit - manualExpenses - returnProfitsLost;
 
   return (
     <div className="space-y-6">
@@ -214,17 +215,18 @@ export default function LedgerView() {
                       <td className="px-4 py-4">
                         <span className={`px-2 py-1 rounded text-xs font-bold ${
                           ['income', 'cash', 'paid_debt'].includes(t.type) ? 'bg-green-100 text-green-700' : 
-                          ['expense', 'company_cash', 'company_paid_debt'].includes(t.type) ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                          ['expense', 'company_cash', 'company_paid_debt', 'return_expense'].includes(t.type) ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
                         }`}>
                           {t.type === 'income' ? 'داهات' : 
                            t.type === 'expense' ? 'خەرجی' : 
+                           t.type === 'return_expense' ? 'گەڕانەوە' : 
                            t.type === 'cash' ? 'نەقد' :
                            t.type === 'paid_debt' ? 'واسڵکراو' : 'قەرز'}
                         </span>
                       </td>
                       <td className="px-4 py-4 text-slate-900 font-medium">{t.description}</td>
                       <td className="px-4 py-4 font-bold" dir="ltr">
-                        <span className={['income', 'cash', 'paid_debt'].includes(t.type) ? 'text-green-600' : ['expense', 'company_cash', 'company_paid_debt'].includes(t.type) ? 'text-red-600' : 'text-slate-900'}>
+                        <span className={['income', 'cash', 'paid_debt'].includes(t.type) ? 'text-green-600' : ['expense', 'company_cash', 'company_paid_debt', 'return_expense'].includes(t.type) ? 'text-red-600' : 'text-slate-900'}>
                           {t.amount.toLocaleString()}
                         </span>
                       </td>
