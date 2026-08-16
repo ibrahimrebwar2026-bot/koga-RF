@@ -50,8 +50,8 @@ export default function CompaniesView() {
     return () => unsub();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent | React.KeyboardEvent) => {
+    if (e) e.preventDefault();
     if (isEditing && editingId) {
       await updateDoc(doc(db, 'companies', editingId), {
         name,
@@ -98,7 +98,7 @@ export default function CompaniesView() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(e); }}>
       <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <h3 className="text-lg font-bold mb-4 text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
           {isEditing ? 'دەستکاریکردنی کۆمپانیا' : 'زیادکردنی کۆمپانیای نوێ'}
