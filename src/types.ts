@@ -43,11 +43,12 @@ export interface StockHistory {
 
 export interface Transaction {
   id: string;
-  type: 'income' | 'expense' | 'debt' | 'cash' | 'paid_debt' | 'company_debt' | 'company_cash' | 'company_paid_debt';
+  type: 'income' | 'expense' | 'debt' | 'cash' | 'paid_debt' | 'company_debt' | 'company_cash' | 'company_paid_debt' | 'return_expense';
   amount: number;
   date: number; // timestamp
   description: string;
   relatedEntityId?: string; // e.g. market name or person name
+  profitReversal?: number;
 }
 
 export interface SalesRep {
