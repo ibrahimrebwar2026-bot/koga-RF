@@ -252,7 +252,7 @@ export default function CashvanSalesView() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') handleSale(); }}>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Inventory Selection */}
