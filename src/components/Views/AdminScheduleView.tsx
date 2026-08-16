@@ -94,7 +94,7 @@ export default function AdminScheduleView() {
   if (loading) return <div className="text-center py-10">خەریکی هێنانە...</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}>
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div className="flex items-center gap-2 border-b border-slate-100 pb-4 mb-4">
           <Calendar className="text-indigo-600" size={24} />
