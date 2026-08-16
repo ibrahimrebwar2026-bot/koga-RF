@@ -245,7 +245,7 @@ export default function OrdersView({ role }: { role: Role }) {
         relatedEntityId: settlingOrder.marketName
       });
       // 2. Mark order as accounted
-      await updateDoc(doc(db, 'orders', settlingOrder.id), { 
+      if (settlingOrder.status !== 'completed') { await updateOrderStatus(settlingOrder, 'completed'); } await updateDoc(doc(db, 'orders', settlingOrder.id), { 
         status: 'completed',
         paymentStatus: type
       });
