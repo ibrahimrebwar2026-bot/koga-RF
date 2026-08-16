@@ -15,7 +15,7 @@ export default function ReturnsView({ role }: { role: Role }) {
   // Return Form
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState<'piece' | 'carton'>('piece');
+  const [unit, setUnit] = useState<'piece' | 'packet' | 'carton'>('piece');
 
   useEffect(() => {
     const qItems = query(collection(db, 'items'));
@@ -71,12 +71,16 @@ export default function ReturnsView({ role }: { role: Role }) {
         date: Date.now()
       });
       
-      // Add expense transaction for the returned goods
-      // Value of returned goods
-      const value = totalPieces * selectedItem.costPrice;
+      // Calculate the refund value based on selling price
+      let refundValue = 0;
+      if (unit === 'carton') refundValue = parsedQuantity * (selectedItem.cartonSellingPrice || (selectedItem.sellingPrice * (selectedItem.ratio || 1)));
+      else if (unit === 'packet') refundValue = parsedQuantity * (selectedItem.packetSellingPrice || (selectedItem.sellingPrice * (selectedItem.packetRatio || 1)));
+      else refundValue = parsedQuantity * selectedItem.sellingPrice;
+
       await addDoc(collection(db, 'transactions'), {
-        type: 'expense',
-        amount: value,
+        type: 'return_expense',
+        amount: refundValue,
+        profitReversal: refundValue - (totalPieces * selectedItem.costPrice),
         description: `گەڕانەوەی کاڵا: ${selectedItem.name} لە مارکێتی ${marketName}`,
         relatedEntityId: marketName,
         date: Date.now()
