@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, where, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc, getDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db, auth } from '../../lib/firebase';
 import { Order, Item, Role, Market } from '../../types';
 import { ShoppingCart, Plus, Printer, CheckCircle, Search, X, DollarSign, CreditCard, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -11,6 +11,20 @@ export default function OrdersView({ role }: { role: Role }) {
   const [markets, setMarkets] = useState<Market[]>([]);
   const [reps, setReps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Auto-fill rep name
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (auth.currentUser && (role === 'sales_rep' || role === 'cashvan')) {
+        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        const userName = userDoc.data()?.name;
+        if (userName) {
+          setRepName(userName);
+        }
+      }
+    };
+    fetchUser();
+  }, [role]);
 
   // New Order State
   const [showNewOrder, setShowNewOrder] = useState(false);
@@ -410,7 +424,8 @@ export default function OrdersView({ role }: { role: Role }) {
                 <input
                   type="text"
                   required
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                  readOnly={role === 'sales_rep' || role === 'cashvan'}
+                  className={`w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm ${role === 'sales_rep' || role === 'cashvan' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
                   value={repName}
                   onChange={(e) => setRepName(e.target.value)}
                 />
