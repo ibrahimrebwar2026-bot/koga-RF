@@ -36,6 +36,7 @@ export default function InventoryView({ role }: { role: Role }) {
   const [paymentType, setPaymentType] = useState<'cash' | 'debt'>('cash');
   const [showPacket, setShowPacket] = useState(false);
   const [showCarton, setShowCarton] = useState(false);
+  const [showPiece, setShowPiece] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -77,8 +78,8 @@ export default function InventoryView({ role }: { role: Role }) {
   return () => unsubscribe();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent | React.KeyboardEvent) => {
+    if (e) e.preventDefault();
     
     const pRatio = Number(packetRatio) || 0;
     const cRatio = Number(cartonRatio) || 0;
@@ -204,6 +205,7 @@ export default function InventoryView({ role }: { role: Role }) {
 
     setShowPacket(!!item.packetRatio || !!item.packetCostPrice || !!item.packetSellingPrice);
     setShowCarton(!!item.ratio || !!item.cartonCostPrice || !!item.cartonSellingPrice);
+    setShowPiece(!!item.costPrice || !!item.sellingPrice);
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -211,7 +213,6 @@ export default function InventoryView({ role }: { role: Role }) {
   const handleDelete = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'items', id));
-      setDeletingId(null);
     } catch (error) {
       console.error("Error deleting document: ", error);
     }
@@ -318,7 +319,7 @@ export default function InventoryView({ role }: { role: Role }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(e); }}>
       {/* Form Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <h3 className="text-lg font-bold mb-4 text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
@@ -364,6 +365,10 @@ export default function InventoryView({ role }: { role: Role }) {
           <div className="flex gap-6 border-b border-slate-100 pb-4 flex-col sm:flex-row justify-between sm:items-center">
             <div className="flex gap-6 items-center">
               <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+                <input type="checkbox" checked={showPiece} onChange={e => setShowPiece(e.target.checked)} className="rounded text-indigo-600 w-4 h-4" />
+                <span>ئەم کاڵایە بە دانە هەیە</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
                 <input type="checkbox" checked={showPacket} onChange={e => setShowPacket(e.target.checked)} className="rounded text-indigo-600 w-4 h-4" />
                 <span>ئەم کاڵایە پاکەتی هەیە</span>
               </label>
@@ -386,21 +391,26 @@ export default function InventoryView({ role }: { role: Role }) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Piece Group */}
-            <div className="p-4 border border-indigo-100 rounded-xl bg-indigo-50/30 space-y-3">
-              <h4 className="font-bold text-indigo-800">بە دانە</h4>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">بڕ (دانە)</label>
-                <input type="number" min="0" step="any" className="w-full px-2 py-1.5 border rounded-md text-sm" value={pieceQuantity} onChange={(e) => setPieceQuantity(e.target.value)} dir="ltr" />
+            {showPiece && (
+              <div className="p-4 border border-indigo-100 rounded-xl bg-indigo-50/30 space-y-3 relative">
+                <button type="button" onClick={() => { setShowPiece(false); setPieceCost(''); setPiecePrice(''); setPieceQuantity(''); }} className="absolute top-4 left-4 text-slate-400 hover:text-red-500 transition">
+                  <Trash2 size={16} />
+                </button>
+                <h4 className="font-bold text-indigo-800">بە دانە</h4>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">بڕ (دانە)</label>
+                  <input type="number" min="0" step="any" className="w-full px-2 py-1.5 border rounded-md text-sm" value={pieceQuantity} onChange={(e) => setPieceQuantity(e.target.value)} dir="ltr" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">تێچوو بۆ هەر دانەیەک</label>
+                  <input type="number" min="0" step="any" className="w-full px-2 py-1.5 border rounded-md text-sm" value={pieceCost} onChange={(e) => setPieceCost(e.target.value)} dir="ltr" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">نرخی فرۆشتن بۆ دانە</label>
+                  <input type="number" min="0" step="any" required={showPiece} className="w-full px-2 py-1.5 border rounded-md text-sm" value={piecePrice} onChange={(e) => setPiecePrice(e.target.value)} dir="ltr" />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">تێچوو بۆ هەر دانەیەک</label>
-                <input type="number" min="0" step="any" className="w-full px-2 py-1.5 border rounded-md text-sm" value={pieceCost} onChange={(e) => setPieceCost(e.target.value)} dir="ltr" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">نرخی فرۆشتن بۆ دانە</label>
-                <input type="number" min="0" step="any" required className="w-full px-2 py-1.5 border rounded-md text-sm" value={piecePrice} onChange={(e) => setPiecePrice(e.target.value)} dir="ltr" />
-              </div>
-            </div>
+            )}
 
             {/* Packet Group */}
             {showPacket && (
@@ -565,19 +575,12 @@ export default function InventoryView({ role }: { role: Role }) {
                         >
                           دەستکاری
                         </button>
-                        {deletingId === item.id ? (
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => handleDelete(item.id)} className="text-white bg-red-600 px-2 py-1 rounded text-xs font-bold">دڵنیام</button>
-                            <button onClick={() => setDeletingId(null)} className="text-slate-600 bg-slate-100 px-2 py-1 rounded text-xs font-bold">پاشگەز</button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setDeletingId(item.id)}
-                            className="text-red-600 font-bold px-2 py-1 hover:bg-red-50 rounded transition"
-                          >
-                            سڕینەوە
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="text-red-600 font-bold px-2 py-1 hover:bg-red-50 rounded transition"
+                        >
+                          سڕینەوە
+                        </button>
                       </div>
                     </td>
                   </tr>
